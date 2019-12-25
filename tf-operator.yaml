@@ -1,0 +1,96 @@
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: tfjobs.kubeflow.org
+spec:
+  group: kubeflow.org
+  scope: Namespaced
+  names:
+    kind: TFJob
+    singular: tfjob
+    plural: tfjobs
+  versions:
+  - name: v1
+    served: true
+    storage: true
+  subresources:
+    status: {}
+  validation:
+    openAPIV3Schema:
+      properties:
+        spec:
+          properties:
+            tfReplicaSpecs:
+              properties:
+                # The validation works when the configuration contains
+                # `Worker`, `PS` or `Chief`. Otherwise it will not be validated.
+                Worker:
+                  properties:
+                    replicas:
+                      type: integer
+                      minimum: 1
+                PS:
+                  properties:
+                    replicas:
+                      type: integer
+                      minimum: 1
+                Chief:
+                  properties:
+                    replicas:
+                      type: integer
+                      minimum: 1
+                      maximum: 1
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tensorflow
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tf-operator
+  namespace: tensorflow
+---
+## 只允许在 tensorflow 命名空间使用
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tf-operator-admin-binding
+subjects:
+- kind: ServiceAccount
+  name: tf-operator
+  namespace: tensorflow
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tf-operator
+  namespace: tensorflow
+spec:
+  selector:
+    matchLabels:
+      app: tf-operator
+  template:
+    metadata:
+      labels:
+        app: tf-operator
+    spec:
+      serviceAccountName: tf-operator
+      containers:
+      - name: tf-operator
+        image: joyme/tf-operator:0.5.3-1
+        command: ["/usr/bin/tf-operator"]
+        imagePullPolicy: Always
+        env:
+          - name: KUBEFLOW_NAMESPACE
+            value: tensorflow
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "1000m"
